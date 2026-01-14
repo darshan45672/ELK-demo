@@ -766,3 +766,20 @@
 2026-01-14T11:53:23Z INFO checkout orderId=1500 userId=109 latencyMs=431
 2026-01-14T11:53:23Z WARN checkout orderId=4784 userId=73 latencyMs=872
 2026-01-14T11:53:23Z ERROR checkout orderId=5088 userId=20 latencyMs=1278 errorCode=PAYMENT_FAILED
+2026-01-14T12:18:30Z INFO checkout orderId=5658 userId=120 latencyMs=1070
+2026-01-14T12:18:32Z WARN checkout orderId=8837 userId=115 latencyMs=516
+2026-01-14T12:18:34Z ERROR checkout orderId=2572 userId=67 latencyMs=252 errorCode=INVALID_CART
+2026-01-14T12:18:36Z WARN checkout orderId=8414 userId=88 latencyMs=468
+2026-01-14T12:18:38Z INFO checkout orderId=2185 userId=99 latencyMs=337
+2026-01-14T12:18:40Z INFO checkout orderId=3629 userId=135 latencyMs=1668
+2026-01-14T12:18:42Z WARN checkout orderId=1782 userId=67 latencyMs=252
+2026-01-14T12:18:44Z INFO checkout orderId=4517 userId=115 latencyMs=688
+2026-01-14T12:18:46Z WARN checkout orderId=4591 userId=55 latencyMs=187
+2026-01-14T12:18:48Z INFO checkout orderId=9083 userId=77 latencyMs=401
+2026-01-14T12:18:50Z INFO checkout orderId=1876 userId=101 latencyMs=713
+2026-01-14T12:18:52Z INFO checkout orderId=1950 userId=42 latencyMs=279
+2026-01-14T12:19:04Z ERROR checkout orderId=8471 userId=42 latencyMs=1231 errorCode=PAYMENT_FAILED
+2026-01-14T12:19:04Z ERROR checkout orderId=8746 userId=101 latencyMs=1432 errorCode=SERVICE_UNAVAILABLE
+2026-01-14T12:19:05Z ERROR checkout orderId=2207 userId=115 latencyMs=1659 errorCode=SERVICE_UNAVAILABLE
+2026-01-14T12:19:05Z ERROR checkout orderId=2018 userId=120 latencyMs=1383 errorCode=SERVICE_UNAVAILABLE
+2026-01-14T12:19:06Z ERROR checkout orderId=2158 userId=120 latencyMs=1292 errorCode=DATABASE_ERROR
