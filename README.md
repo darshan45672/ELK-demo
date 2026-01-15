@@ -1,31 +1,50 @@
-# ELK Demo - Elasticsearch with Filebeat Log Shipping
+# ELK Demo - Complete ELK Stack with Logstash
 
-A production-ready logging pipeline using Elasticsearch and Filebeat for log shipping, with synthetic log generation using Podman.
+A production-ready logging pipeline using the complete ELK stack (Elasticsearch, Logstash, Kibana/Elasticvue) with Filebeat for log shipping and synthetic log generation using Podman.
 
 ## Architecture
 
 ```
-Log Generator (Python) → File System (/var/log/app/*.log) → Filebeat → Elasticsearch ← Elasticvue (Web UI)
+Log Generator (Python) → File System (/var/log/app/*.log) → Filebeat → Logstash → Elasticsearch ← Elasticvue (Web UI)
 ```
 
-This setup demonstrates proper log shipping patterns used in production environments, where applications write logs to files and a log shipper (Filebeat) tails those files and sends them to Elasticsearch.
+This setup demonstrates the industry-standard ELK (Elasticsearch, Logstash, Kibana) stack pattern where:
+- **Applications** write logs to files (log-generator writes JSON logs)
+- **Filebeat** (lightweight shipper) tails log files and forwards to Logstash
+- **Logstash** (data processing pipeline) parses, transforms, and enriches log data
+- **Elasticsearch** (search & analytics engine) stores and indexes processed logs
+- **Elasticvue** (web UI) provides visualization and search capabilities
 
 ## Components
 
 1. **Elasticsearch**: Stores and indexes logs (v8.19.0)
 2. **Log Generator**: Python app that generates random synthetic JSON logs and writes them to files
-3. **Filebeat**: Log shipper that tails log files and sends them to Elasticsearch (v8.19.0)
-4. **Elasticvue**: Browser-based UI for querying and viewing Elasticsearch data
+3. **Filebeat**: Lightweight log shipper that tails log files and sends to Logstash (v8.19.0)
+4. **Logstash**: Data processing pipeline that parses JSON, enriches data, and sends to Elasticsearch (v8.19.0)
+5. **Elasticvue**: Browser-based UI for querying and viewing Elasticsearch data
 
 ## Features
 
-- 🚀 Single-node Elasticsearch cluster with disk threshold disabled
+- 🚀 Complete ELK Stack with proper data flow
 - 📊 Synthetic JSON log generation with realistic data patterns
 - 🔄 Continuous log streaming (1-5 second intervals)
 - 📁 File-based log shipping via Filebeat (production pattern)
+- 🔧 Logstash JSON parsing and data transformation
 - 💾 Persistent volume storage for Elasticsearch data and Filebeat registry
 - 🌐 Network isolation with dedicated bridge network
 - 🖥️ Web UI (Elasticvue) for easy data exploration
+
+## Logstash Pipeline
+
+The Logstash configuration (`logstash/pipeline/logstash.conf`) includes:
+- **Input**: Beats input on port 5044
+- **Filter**: 
+  - JSON parser to extract log fields from message
+  - Mutate filter to add pipeline tracking fields
+  - Date filter to use log timestamp as event timestamp
+- **Output**: 
+  - Elasticsearch (index: `logstash-app-logs-*`)
+  - Stdout with rubydebug for debugging
 
 ## Setup
 
@@ -43,7 +62,8 @@ podman-compose up -d
 This will start:
 - Elasticsearch on ports 9200 (HTTP) and 9300 (Transport)
 - Log Generator (writes JSON logs to /var/log/app/application.log)
-- Filebeat (tails log files and ships to Elasticsearch)
+- Filebeat (tails log files and ships to Logstash on port 5044)
+- Logstash (processes logs and sends to Elasticsearch on ports 5044 and 9600)
 - Elasticvue on port 8080 (Web UI)
 
 ### Access Elasticvue Web UI
@@ -75,8 +95,11 @@ http://localhost:8080
 # View log generator output (see logs being written)
 podman logs -f log-generator
 
-# View Filebeat logs (see log shipping status)
+# View Filebeat logs (see log shipping to Logstash)
 podman logs -f filebeat
+
+# View Logstash logs (see data processing and parsed JSON)
+podman logs -f logstash
 
 # View Elasticsearch logs
 podman logs -f elasticsearch
@@ -95,27 +118,24 @@ curl http://localhost:9200
 curl 'http://localhost:9200/_cluster/health?pretty'
 
 # List all indices
-curl 'http://localhost:9200/_cat/indices?v'
-```
-
 ### Query Stored Logs
 
-**Note**: Logs are indexed in `filebeat-app-logs-*` indices with JSON content in the `message` field.
+**Note**: Logs are indexed in `logstash-app-logs-*` indices with parsed JSON fields in the `app` object.
 
 #### Basic Queries
 
 ```bash
-# Get count of stored logs from Filebeat index
-curl 'http://localhost:9200/filebeat-app-logs-*/_count'
+# Get count of stored logs from Logstash index
+curl 'http://localhost:9200/logstash-app-logs-*/_count'
 
 # View sample logs (last 5)
-curl 'http://localhost:9200/filebeat-app-logs-*/_search?pretty&size=5&sort=@timestamp:desc'
+curl 'http://localhost:9200/logstash-app-logs-*/_search?pretty&size=5&sort=@timestamp:desc'
 
-# View specific fields only
-curl 'http://localhost:9200/filebeat-app-logs-*/_search?pretty&size=5&sort=@timestamp:desc' | jq '.hits.hits[]._source | {timestamp: ."@timestamp", message: .message, host: .host.name}'
+# View specific fields only (parsed JSON)
+curl 'http://localhost:9200/logstash-app-logs-*/_search?pretty&size=5&sort=@timestamp:desc' | jq '.hits.hits[]._source | {timestamp: ."@timestamp", level: .app.level, service: .app.service, message: .app.message, user: .app.user_id}'
 
 # Get all logs (match_all)
-curl -X GET 'http://localhost:9200/filebeat-app-logs-*/_search?pretty' -H 'Content-Type: application/json' -d'
+curl -X GET 'http://localhost:9200/logstash-app-logs-*/_search?pretty' -H 'Content-Type: application/json' -d'
 {
   "query": {
     "match_all": {}
@@ -126,15 +146,15 @@ curl -X GET 'http://localhost:9200/filebeat-app-logs-*/_search?pretty' -H 'Conte
 '
 ```
 
-#### Search by Field (Match Query)
+#### Search by Parsed Fields
 
 ```bash
-# Search logs containing "ERROR" in message
-curl -X GET 'http://localhost:9200/filebeat-app-logs-*/_search?pretty' -H 'Content-Type: application/json' -d'
+# Search logs by level (ERROR only)
+curl -X GET 'http://localhost:9200/logstash-app-logs-*/_search?pretty' -H 'Content-Type: application/json' -d'
 {
   "query": {
-    "match": {
-      "message": "ERROR"
+    "term": {
+      "app.level": "ERROR"
     }
   },
   "size": 10,
@@ -142,52 +162,30 @@ curl -X GET 'http://localhost:9200/filebeat-app-logs-*/_search?pretty' -H 'Conte
 }
 '
 
-# Search by log source
-curl -X GET 'http://localhost:9200/filebeat-app-logs-*/_search?pretty' -H 'Content-Type: application/json' -d'
+# Search by service
+curl -X GET 'http://localhost:9200/logstash-app-logs-*/_search?pretty' -H 'Content-Type: application/json' -d'
 {
   "query": {
-    "match": {
-      "log_source": "filebeat"
+    "term": {
+      "app.service.keyword": "payment-service"
     }
   },
   "size": 10
 }
 '
 
-# Search by message text
-curl -X GET 'http://localhost:9200/app-logs/_search?pretty' -H 'Content-Type: application/json' -d'
-{
-  "query": {
-    "match": {
-      "message": "timeout"
-    }
-  }
-}
-'
-```
-
-#### Exact Match (Term Query)
-
-```bash
-# Exact match on service (use .keyword for text fields)
-curl -X GET 'http://localhost:9200/app-logs/_search?pretty' -H 'Content-Type: application/json' -d'
+# Search by status code
+curl -X GET 'http://localhost:9200/logstash-app-logs-*/_search?pretty' -H 'Content-Type: application/json' -d'
 {
   "query": {
     "term": {
-      "service.keyword": "auth-service"
+      "app.status_code": 500
     }
-  }
+  },
+  "size": 10
 }
-'
-
-# Match specific status code
-curl -X GET 'http://localhost:9200/app-logs/_search?pretty' -H 'Content-Type: application/json' -d'
-{
-  "query": {
-    "term": {
-      "status_code": 500
-    }
-  }
+' },
+  "size": 10
 }
 '
 ```
@@ -196,29 +194,31 @@ curl -X GET 'http://localhost:9200/app-logs/_search?pretty' -H 'Content-Type: ap
 
 ```bash
 # Get logs from last 5 minutes
-curl -X GET 'http://localhost:9200/app-logs/_search?pretty' -H 'Content-Type: application/json' -d'
+curl -X GET 'http://localhost:9200/logstash-app-logs-*/_search?pretty' -H 'Content-Type: application/json' -d'
 {
   "query": {
     "range": {
-      "timestamp": {
+      "@timestamp": {
         "gte": "now-5m",
         "lte": "now"
       }
     }
-  }
+  },
+  "sort": [{"@timestamp": "desc"}]
 }
 '
 
 # Find slow requests (duration > 2000ms)
-curl -X GET 'http://localhost:9200/app-logs/_search?pretty' -H 'Content-Type: application/json' -d'
+curl -X GET 'http://localhost:9200/logstash-app-logs-*/_search?pretty' -H 'Content-Type: application/json' -d'
 {
   "query": {
     "range": {
-      "duration_ms": {
+      "app.duration_ms": {
         "gte": 2000
       }
     }
-  }
+  },
+  "sort": [{"app.duration_ms": "desc"}]
 }
 '
 
@@ -358,13 +358,13 @@ curl -X GET 'http://localhost:9200/app-logs/_search?pretty' -H 'Content-Type: ap
 '
 
 # Average response time
-curl -X GET 'http://localhost:9200/app-logs/_search?pretty' -H 'Content-Type: application/json' -d'
+curl -X GET 'http://localhost:9200/logstash-app-logs-*/_search?pretty' -H 'Content-Type: application/json' -d'
 {
   "size": 0,
   "aggs": {
     "avg_duration": {
       "avg": {
-        "field": "duration_ms"
+        "field": "app.duration_ms"
       }
     }
   }
@@ -372,13 +372,13 @@ curl -X GET 'http://localhost:9200/app-logs/_search?pretty' -H 'Content-Type: ap
 '
 
 # Statistics on duration
-curl -X GET 'http://localhost:9200/app-logs/_search?pretty' -H 'Content-Type: application/json' -d'
+curl -X GET 'http://localhost:9200/logstash-app-logs-*/_search?pretty' -H 'Content-Type: application/json' -d'
 {
   "size": 0,
   "aggs": {
     "duration_stats": {
       "stats": {
-        "field": "duration_ms"
+        "field": "app.duration_ms"
       }
     }
   }
@@ -386,13 +386,13 @@ curl -X GET 'http://localhost:9200/app-logs/_search?pretty' -H 'Content-Type: ap
 '
 
 # Count unique users
-curl -X GET 'http://localhost:9200/app-logs/_search?pretty' -H 'Content-Type: application/json' -d'
+curl -X GET 'http://localhost:9200/logstash-app-logs-*/_search?pretty' -H 'Content-Type: application/json' -d'
 {
   "size": 0,
   "aggs": {
     "unique_users": {
       "cardinality": {
-        "field": "user_id.keyword"
+        "field": "app.user_id.keyword"
       }
     }
   }
@@ -400,13 +400,13 @@ curl -X GET 'http://localhost:9200/app-logs/_search?pretty' -H 'Content-Type: ap
 '
 
 # Logs over time (histogram)
-curl -X GET 'http://localhost:9200/app-logs/_search?pretty' -H 'Content-Type: application/json' -d'
+curl -X GET 'http://localhost:9200/logstash-app-logs-*/_search?pretty' -H 'Content-Type: application/json' -d'
 {
   "size": 0,
   "aggs": {
     "logs_over_time": {
       "date_histogram": {
-        "field": "timestamp",
+        "field": "@timestamp",
         "calendar_interval": "minute"
       }
     }
@@ -418,15 +418,16 @@ curl -X GET 'http://localhost:9200/app-logs/_search?pretty' -H 'Content-Type: ap
 #### Select Specific Fields
 
 ```bash
-# Return only specific fields
-curl -X GET 'http://localhost:9200/app-logs/_search?pretty' -H 'Content-Type: application/json' -d'
+# Return only specific fields from parsed JSON
+curl -X GET 'http://localhost:9200/logstash-app-logs-*/_search?pretty' -H 'Content-Type: application/json' -d'
 {
-  "_source": ["timestamp", "level", "service", "message"],
+  "_source": ["@timestamp", "app.level", "app.service", "app.message", "app.user_id"],
   "query": {
-    "match": {
-      "level": "ERROR"
+    "term": {
+      "app.level": "ERROR"
     }
-  }
+  },
+  "sort": [{"@timestamp": "desc"}]
 }
 '
 ```
@@ -484,6 +485,47 @@ podman-compose restart log-generator
 # Check logs for errors
 podman logs log-generator
 ```
+
+### Filebeat not shipping logs
+```bash
+# Check Filebeat status
+podman logs filebeat
+
+# Verify Logstash is reachable
+podman exec filebeat curl -v logstash:5044
+
+# Restart Filebeat
+podman-compose restart filebeat
+```
+
+### Logstash not processing logs
+```bash
+# Check Logstash logs
+podman logs logstash
+
+# Verify Logstash is receiving data from Filebeat
+podman logs logstash | grep "Beats inputs"
+
+# Check Logstash health endpoint
+curl http://localhost:9600
+
+# Restart Logstash
+podman-compose restart logstash
+```
+
+### No data in Elasticsearch
+```bash
+# Check if indices exist
+curl 'http://localhost:9200/_cat/indices?v'
+
+# Verify data flow
+podman logs log-generator | tail -5  # Should show logs being written
+podman logs filebeat | tail -20       # Should show events being sent
+podman logs logstash | tail -20       # Should show JSON parsed logs
+curl 'http://localhost:9200/logstash-app-logs-*/_count'  # Should return count > 0
+```
+
+## Data Flow Diagram
 
 ```
 ┌─────────────────────────────────────┐
