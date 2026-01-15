@@ -524,63 +524,27 @@ curl 'http://localhost:9200/logstash-app-logs-*/_count'  # Should return count >
 
 ## Data Flow Diagram
 
-```
-┌─────────────────────────────────────┐
-│  Log Generator Container             │
-│  (Python 3.11)                       │
-│  - Generates synthetic logs          │
-│  - Random intervals (1-5s)           │
-│  - Multiple log levels & services    │
-└──────────────┬──────────────────────┘
-               │
-               │ HTTP POST /app-logs/_doc
-               │ Content-Type: application/json
-               │
-               ▼
-┌─────────────────────────────────────┐
-│  Elasticsearch Container             │
-│  (v8.19.0)                           │
-│  - Port: 9200 (HTTP API)             │
-│  - Port: 9300 (Transport)            │
-│  - Single-node cluster               │
-│  - Security disabled (dev mode)      │
-│  - Volume: elasticsearch-data        │
-└──────────────┬──────────────────────┘
-               │
-               │ Connected via elk-network
-               │
-               ▼
-┌─────────────────────────────────────┐
-│  Elasticvue Container                │
-│  (Web UI)                            │
-│  - Port: 8080                        │
-│  - Browse & query data               │
-│  - Visual interface                  │
-└─────────────────────────────────────┘
-         Access via browser:
-         http://localhost:8080
-```
-┌─────────────────────────────────────┐
-│  Log Generator Container             │
-│  (Python 3.11)                       │
-│  - Generates synthetic logs          │
-│  - Random intervals (1-5s)           │
-│  - Multiple log levels & services    │
-└──────────────┬──────────────────────┘
-               │
-               │ HTTP POST /app-logs/_doc
-               │ Content-Type: application/json
-               │
-               ▼
-┌─────────────────────────────────────┐
-│  Elasticsearch Container             │
-│  (v8.19.0)                           │
-│  - Port: 9200 (HTTP API)             │
-│  - Port: 9300 (Transport)            │
-│  - Single-node cluster               │
-│  - Security disabled (dev mode)      │
-│  - Volume: elasticsearch-data        │
-└─────────────────────────────────────┘
+```mermaid
+flowchart LR
+    A["Log Generator<br/>(Python 3.11)<br/>• Generates synthetic logs<br/>• Random intervals (1-5s)<br/>• Multiple log levels & services"]
+    B[("File System<br/>/var/log/app/*.log")]
+    C["Filebeat<br/>(v8.19.0)<br/>• Lightweight shipper<br/>• Tails log files<br/>• Volume: filebeat-data"]
+    D["Logstash<br/>(v8.19.0)<br/>• Port: 5044 (Beats input)<br/>• Port: 9600 (Health)<br/>• JSON parsing & enrichment"]
+    E["Elasticsearch<br/>(v8.19.0)<br/>• Port: 9200 (HTTP API)<br/>• Port: 9300 (Transport)<br/>• Single-node cluster<br/>• Volume: elasticsearch-data"]
+    F["Elasticvue<br/>(Web UI)<br/>• Port: 8080<br/>• Browse & query data<br/>• Visual interface"]
+    
+    A -->|"Writes JSON logs"| B
+    B -->|"Filestream input"| C
+    C -->|"Ships logs<br/>(port 5044)"| D
+    D -->|"Indexed data<br/>(logstash-app-logs-*)"| E
+    F -->|"Query & visualize<br/>(port 9200)"| E
+    
+    style A fill:#e1f5ff
+    style B fill:#fff4e6
+    style C fill:#e8f5e9
+    style D fill:#f3e5f5
+    style E fill:#fce4ec
+    style F fill:#fff9c4
 ```
 
 ## Next Steps
