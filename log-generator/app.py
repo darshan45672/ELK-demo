@@ -1,12 +1,11 @@
 import time
 import random
 import json
-import requests
+import os
 from datetime import datetime
 
-# Elasticsearch configuration
-ES_HOST = "http://elasticsearch:9200"
-INDEX_NAME = "app-logs"
+# Log file path
+LOG_FILE_PATH = "/var/log/app/application.log"
 
 # Sample log levels and messages
 LOG_LEVELS = ["INFO", "WARNING", "ERROR", "DEBUG"]
@@ -38,42 +37,30 @@ def generate_log():
     }
     return log_entry
 
-def send_log_to_elasticsearch(log_entry):
-    """Send log entry to Elasticsearch"""
+def write_log_to_file(log_entry):
+    """Write log entry to file"""
     try:
-        url = f"{ES_HOST}/{INDEX_NAME}/_doc"
-        headers = {"Content-Type": "application/json"}
-        response = requests.post(url, json=log_entry, headers=headers, timeout=10)
+        # Ensure directory exists
+        os.makedirs(os.path.dirname(LOG_FILE_PATH), exist_ok=True)
         
-        if response.status_code in [200, 201]:
-            print(f"✓ Log sent: {log_entry['level']} - {log_entry['service']} - {log_entry['message']}", flush=True)
-        else:
-            print(f"✗ Failed to send log: {response.status_code} - {response.text}", flush=True)
+        # Write log as JSON line
+        with open(LOG_FILE_PATH, 'a') as f:
+            f.write(json.dumps(log_entry) + '\n')
+            f.flush()
+        
+        print(f"✓ Log written: {log_entry['level']} - {log_entry['service']} - {log_entry['message']}", flush=True)
     except Exception as e:
-        print(f"✗ Error sending log: {str(e)}", flush=True)
+        print(f"✗ Error writing log: {str(e)}", flush=True)
 
 def main():
     print("Starting log generator...", flush=True)
-    print(f"Sending logs to: {ES_HOST}/{INDEX_NAME}", flush=True)
+    print(f"Writing logs to: {LOG_FILE_PATH}", flush=True)
     print("-" * 80, flush=True)
     
-    # Wait for Elasticsearch to be ready
-    for i in range(30):
-        try:
-            response = requests.get(ES_HOST, timeout=5)
-            if response.status_code == 200:
-                print("✓ Elasticsearch is ready!", flush=True)
-                break
-        except Exception as e:
-            print(f"Waiting for Elasticsearch... ({i+1}/30): {str(e)}", flush=True)
-            time.sleep(2)
-    
-    print("-" * 80, flush=True)
-    
-    # Generate and send logs continuously
+    # Generate and write logs continuously
     while True:
         log_entry = generate_log()
-        send_log_to_elasticsearch(log_entry)
+        write_log_to_file(log_entry)
         
         # Random delay between 1-5 seconds
         delay = random.uniform(1, 5)

@@ -1,19 +1,29 @@
-# ELK Demo - Elasticsearch Log Storage
+# ELK Demo - Elasticsearch with Filebeat Log Shipping
 
-A simple setup with Elasticsearch and a synthetic log generator using Podman.
+A production-ready logging pipeline using Elasticsearch and Filebeat for log shipping, with synthetic log generation using Podman.
+
+## Architecture
+
+```
+Log Generator (Python) → File System (/var/log/app/*.log) → Filebeat → Elasticsearch ← Elasticvue (Web UI)
+```
+
+This setup demonstrates proper log shipping patterns used in production environments, where applications write logs to files and a log shipper (Filebeat) tails those files and sends them to Elasticsearch.
 
 ## Components
 
 1. **Elasticsearch**: Stores and indexes logs (v8.19.0)
-2. **Log Generator**: Python app that generates random synthetic logs and sends them to Elasticsearch via REST API
-3. **Elasticvue**: Browser-based UI for querying and viewing Elasticsearch data
+2. **Log Generator**: Python app that generates random synthetic JSON logs and writes them to files
+3. **Filebeat**: Log shipper that tails log files and sends them to Elasticsearch (v8.19.0)
+4. **Elasticvue**: Browser-based UI for querying and viewing Elasticsearch data
 
 ## Features
 
 - 🚀 Single-node Elasticsearch cluster with disk threshold disabled
-- 📊 Synthetic log generation with realistic data patterns
+- 📊 Synthetic JSON log generation with realistic data patterns
 - 🔄 Continuous log streaming (1-5 second intervals)
-- 💾 Persistent volume storage for Elasticsearch data
+- 📁 File-based log shipping via Filebeat (production pattern)
+- 💾 Persistent volume storage for Elasticsearch data and Filebeat registry
 - 🌐 Network isolation with dedicated bridge network
 - 🖥️ Web UI (Elasticvue) for easy data exploration
 
@@ -32,7 +42,8 @@ podman-compose up -d
 
 This will start:
 - Elasticsearch on ports 9200 (HTTP) and 9300 (Transport)
-- Log Generator (automatically starts sending logs when Elasticsearch is ready)
+- Log Generator (writes JSON logs to /var/log/app/application.log)
+- Filebeat (tails log files and ships to Elasticsearch)
 - Elasticvue on port 8080 (Web UI)
 
 ### Access Elasticvue Web UI
@@ -58,16 +69,20 @@ http://localhost:8080
 - 📈 Cluster health monitoring
 - 🎯 Index management
 
-### View Real-Time Logstically starts sending logs when Elasticsearch is ready)
-
 ### View Real-Time Logs
 
 ```bash
-# View log generator output (see logs being sent)
+# View log generator output (see logs being written)
 podman logs -f log-generator
+
+# View Filebeat logs (see log shipping status)
+podman logs -f filebeat
 
 # View Elasticsearch logs
 podman logs -f elasticsearch
+
+# View actual log file being tailed by Filebeat
+podman exec log-generator tail -f /var/log/app/application.log
 ```
 
 ### Check Elasticsearch Status
@@ -78,29 +93,35 @@ curl http://localhost:9200
 
 # Cluster health (should be "yellow" for single-node)
 curl 'http://localhost:9200/_cluster/health?pretty'
+
+# List all indices
+curl 'http://localhost:9200/_cat/indices?v'
 ```
 
 ### Query Stored Logs
 
+**Note**: Logs are indexed in `filebeat-app-logs-*` indices with JSON content in the `message` field.
+
 #### Basic Queries
 
 ```bash
-# Get count of stored logs
-curl 'http://localhost:9200/app-logs/_count'
+# Get count of stored logs from Filebeat index
+curl 'http://localhost:9200/filebeat-app-logs-*/_count'
 
 # View sample logs (last 5)
-curl 'http://localhost:9200/app-logs/_search?pretty&size=5'
+curl 'http://localhost:9200/filebeat-app-logs-*/_search?pretty&size=5&sort=@timestamp:desc'
 
 # View specific fields only
-curl 'http://localhost:9200/app-logs/_search?pretty&size=5' | jq '.hits.hits[]._source'
+curl 'http://localhost:9200/filebeat-app-logs-*/_search?pretty&size=5&sort=@timestamp:desc' | jq '.hits.hits[]._source | {timestamp: ."@timestamp", message: .message, host: .host.name}'
 
 # Get all logs (match_all)
-curl -X GET 'http://localhost:9200/app-logs/_search?pretty' -H 'Content-Type: application/json' -d'
+curl -X GET 'http://localhost:9200/filebeat-app-logs-*/_search?pretty' -H 'Content-Type: application/json' -d'
 {
   "query": {
     "match_all": {}
   },
-  "size": 10
+  "size": 10,
+  "sort": [{"@timestamp": "desc"}]
 }
 '
 ```
@@ -108,26 +129,28 @@ curl -X GET 'http://localhost:9200/app-logs/_search?pretty' -H 'Content-Type: ap
 #### Search by Field (Match Query)
 
 ```bash
-# Search logs by level (ERROR only)
-curl -X GET 'http://localhost:9200/app-logs/_search?pretty' -H 'Content-Type: application/json' -d'
+# Search logs containing "ERROR" in message
+curl -X GET 'http://localhost:9200/filebeat-app-logs-*/_search?pretty' -H 'Content-Type: application/json' -d'
 {
   "query": {
     "match": {
-      "level": "ERROR"
+      "message": "ERROR"
     }
   },
-  "size": 10
+  "size": 10,
+  "sort": [{"@timestamp": "desc"}]
 }
 '
 
-# Search by service
-curl -X GET 'http://localhost:9200/app-logs/_search?pretty' -H 'Content-Type: application/json' -d'
+# Search by log source
+curl -X GET 'http://localhost:9200/filebeat-app-logs-*/_search?pretty' -H 'Content-Type: application/json' -d'
 {
   "query": {
     "match": {
-      "service": "payment-service"
+      "log_source": "filebeat"
     }
-  }
+  },
+  "size": 10
 }
 '
 
