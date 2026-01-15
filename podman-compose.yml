@@ -1,0 +1,40 @@
+version: "3.8"
+
+services:
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.19.0
+    container_name: elasticsearch
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+      - cluster.routing.allocation.disk.threshold_enabled=false
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    volumes:
+      - elasticsearch-data:/usr/share/elasticsearch/data
+    networks:
+      - elk-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9200 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  log-generator:
+    build: ./log-generator
+    container_name: log-generator
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    networks:
+      - elk-network
+
+volumes:
+  elasticsearch-data:
+    driver: local
+
+networks:
+  elk-network:
+    driver: bridge

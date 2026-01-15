@@ -1,10 +1,4 @@
-.DS_Store
-*.log
-!logs/app.log
 elasticsearch-data/
+*.pyc
+__pycache__/
 .env
-*.swp
-*.swo
-*~
-.vscode/
-.idea/
