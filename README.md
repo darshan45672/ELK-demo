@@ -2,11 +2,26 @@
 
 A production-ready logging pipeline using the complete ELK stack (Elasticsearch, Logstash, Kibana/Elasticvue) with Filebeat for log shipping and synthetic log generation using Podman.
 
-## Architecture
+> **🚀 NEW: Kafka Integration Available!**  
+> This branch demonstrates the basic ELK stack. For a production-grade setup with Apache Kafka message queue (high-throughput, fault-tolerant, replay capability), see **[README-KAFKA.md](./README-KAFKA.md)** or switch to the `kafka` branch.
 
+## Architecture Versions
+
+### Current: Phase 3 - Direct Filebeat to Logstash
 ```
 Log Generator (Python) → File System (/var/log/app/*.log) → Filebeat → Logstash → Elasticsearch ← Elasticvue (Web UI)
 ```
+
+### Available: Phase 4 - Kafka Message Queue ([README-KAFKA.md](./README-KAFKA.md))
+```
+Log Generator → Files → Filebeat → Kafka Topic → Logstash → Elasticsearch ← Elasticvue
+                                    ↑
+                                Zookeeper
+```
+
+**Why Kafka?** Adds durable buffering, replay capability, horizontal scaling, and handles 10,000+ logs/sec. See [README-KAFKA.md](./README-KAFKA.md) for details.
+
+---
 
 This setup demonstrates the industry-standard ELK (Elasticsearch, Logstash, Kibana) stack pattern where:
 - **Applications** write logs to files (log-generator writes JSON logs)
@@ -547,12 +562,60 @@ flowchart LR
     style F fill:#fff9c4
 ```
 
+## Upgrade to Kafka Integration
+
+**Ready for production-grade logging?**
+
+The current setup works well for development and small-scale deployments. For high-volume production environments, consider upgrading to the **Kafka-integrated architecture**:
+
+### When to Add Kafka
+
+| Scenario | Without Kafka | With Kafka |
+|----------|---------------|------------|
+| **Volume** | < 5,000 logs/sec | > 10,000 logs/sec |
+| **Durability** | In-memory buffering | Disk-persisted messages |
+| **Replay** | ❌ Not possible | ✅ Reset offset to replay |
+| **Scaling** | Vertical only | Horizontal (partitions) |
+| **Recovery Time** | 5-10 minutes | 1-5 minutes |
+| **Multiple Consumers** | ❌ No | ✅ Yes (same logs → multiple pipelines) |
+
+### Quick Switch to Kafka
+
+```bash
+# Switch to kafka branch
+git checkout kafka
+
+# Start the enhanced stack (7 services)
+podman-compose up -d
+
+# Verify Kafka is working
+podman exec kafka kafka-topics.sh --list --bootstrap-server localhost:9092
+```
+
+**📘 Full Documentation:** See **[README-KAFKA.md](./README-KAFKA.md)** for:
+- Complete architecture diagrams with Kafka
+- Kafka monitoring and consumer lag management
+- Performance tuning for high-throughput
+- How to replay historical logs
+- Troubleshooting Kafka-specific issues
+
+### Architecture Evolution
+
+This project demonstrates the complete evolution of logging architectures:
+
+1. **Phase 1**: Direct Elasticsearch integration (simple, limited)
+2. **Phase 2**: Filebeat added (file-based shipping)
+3. **Phase 3**: Logstash added (data processing) ← **You are here**
+4. **Phase 4**: Kafka added (enterprise-grade) ← **[README-KAFKA.md](./README-KAFKA.md)**
+
+**📖 Detailed Evolution:** See **[ARCHITECTURE.md](./ARCHITECTURE.md)** for comprehensive documentation of all 4 phases with diagrams, comparisons, and use cases.
+
 ## Next Steps
 
 This is a basic setup. To expand further, consider:
-- Adding Kibana for log visualization
-- Implementing Logstash for log processing pipelines
-- Adding Filebeat for log collection from files
+- **Add Kafka**: See [README-KAFKA.md](./README-KAFKA.md) for enterprise features
+- Adding Kibana for advanced visualization and dashboards
 - Implementing index lifecycle management (ILM)
 - Setting up security (authentication & encryption)
 - Creating custom dashboards and visualizations
+- Adding alerting with ElastAlert or Watcher

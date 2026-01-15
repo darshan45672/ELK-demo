@@ -8,9 +8,15 @@ filebeat.inputs:
     log_source: filebeat
   fields_under_root: true
 
-# Logstash output
-output.logstash:
-  hosts: ["logstash:5044"]
+# Kafka output
+output.kafka:
+  hosts: ["kafka:9092"]
+  topic: "filebeat-logs"
+  partition.round_robin:
+    reachable_only: false
+  required_acks: 1
+  compression: gzip
+  max_message_bytes: 1000000
 
 # Logging
 logging.level: info
