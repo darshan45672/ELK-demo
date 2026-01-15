@@ -184,9 +184,6 @@ curl -X GET 'http://localhost:9200/logstash-app-logs-*/_search?pretty' -H 'Conte
   },
   "size": 10
 }
-' },
-  "size": 10
-}
 '
 ```
 
