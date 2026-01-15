@@ -9,6 +9,9 @@ services:
       - xpack.security.enabled=false
       - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
       - cluster.routing.allocation.disk.threshold_enabled=false
+      - http.cors.enabled=true
+      - http.cors.allow-origin="*"
+      - http.cors.allow-headers=X-Requested-With,Content-Type,Content-Length,Authorization
     ports:
       - "9200:9200"
       - "9300:9300"
@@ -30,6 +33,14 @@ services:
         condition: service_healthy
     networks:
       - elk-network
+
+  elasticvue:
+    image: docker.io/cars10/elasticvue:latest
+    container_name: elasticvue
+    ports:
+      - "8080:8080"
+    depends_on:
+      - elasticsearch
 
 volumes:
   elasticsearch-data:

@@ -6,6 +6,7 @@ A simple setup with Elasticsearch and a synthetic log generator using Podman.
 
 1. **Elasticsearch**: Stores and indexes logs (v8.19.0)
 2. **Log Generator**: Python app that generates random synthetic logs and sends them to Elasticsearch via REST API
+3. **Elasticvue**: Browser-based UI for querying and viewing Elasticsearch data
 
 ## Features
 
@@ -14,6 +15,7 @@ A simple setup with Elasticsearch and a synthetic log generator using Podman.
 - 🔄 Continuous log streaming (1-5 second intervals)
 - 💾 Persistent volume storage for Elasticsearch data
 - 🌐 Network isolation with dedicated bridge network
+- 🖥️ Web UI (Elasticvue) for easy data exploration
 
 ## Setup
 
@@ -31,6 +33,32 @@ podman-compose up -d
 This will start:
 - Elasticsearch on ports 9200 (HTTP) and 9300 (Transport)
 - Log Generator (automatically starts sending logs when Elasticsearch is ready)
+- Elasticvue on port 8080 (Web UI)
+
+### Access Elasticvue Web UI
+
+Open your browser and go to:
+```
+http://localhost:8080
+```
+
+**First-time Setup:**
+1. Click "Add elasticsearch cluster"
+2. Enter cluster details:
+   - **Name**: Local Elasticsearch (or any name you prefer)
+   - **Uri**: `http://localhost:9200` (use localhost, not elasticsearch)
+3. Click "Test connection" then "Connect"
+
+**Note**: Use `http://localhost:9200` because you're connecting from your browser (host machine), not from inside the container network.
+
+**Features Available:**
+- 📊 Browse indices and documents
+- 🔍 Search with visual query builder
+- 📝 View and edit documents
+- 📈 Cluster health monitoring
+- 🎯 Index management
+
+### View Real-Time Logstically starts sending logs when Elasticsearch is ready)
 
 ### View Real-Time Logs
 
@@ -394,8 +422,26 @@ podman-compose down -v
 
 ## Troubleshooting
 
+### Elasticsearch shows "yellow" cluster status
+This is **normal and expected** for a single-node cluster!
+
+**Why Yellow?**
+- 🟡 Yellow means all primary shards are active, but replica shards cannot be assigned
+- Single-node clusters can't place replicas (they must be on different nodes)
+- Your data is safe and accessible - this is the correct state for development
+
+**Cluster Status Colors:**
+- 🟢 **Green**: All primary and replica shards allocated (requires multiple nodes)
+- 🟡 **Yellow**: All primaries allocated, some replicas unassigned (normal for single-node)
+- 🔴 **Red**: Some primary shards missing (data loss risk)
+
+```bash
+# Check cluster health
+curl 'http://localhost:9200/_cluster/health?pretty'
+```
+
 ### Elasticsearch shows "red" cluster status
-This is usually due to disk space issues. The configuration disables disk threshold checks, but if you still face issues:
+This indicates missing primary shards. Usually due to disk space issues:
 ```bash
 # Check cluster health
 curl 'http://localhost:9200/_cluster/health?pretty'
@@ -416,28 +462,41 @@ podman-compose restart log-generator
 podman logs log-generator
 ```
 
-### Cannot connect to Elasticsearch
-Ensure Elasticsearch is healthy before querying:
-```bash
-# Wait for health check to pass
-podman ps
-# Look for "healthy" status on elasticsearch container
 ```
-
-## Log Structure
-
-Each log entry contains:
-- `timestamp`: ISO format timestamp
-- `level`: INFO, WARNING, ERROR, or DEBUG
-- `service`: Name of the service generating the log
-- `message`: Log message
-- `user_id`: User identifier
-- `request_id`: Request identifier
-- `duration_ms`: Duration in milliseconds
-- `status_code`: HTTP status code
-
-## Architecture
-
+┌─────────────────────────────────────┐
+│  Log Generator Container             │
+│  (Python 3.11)                       │
+│  - Generates synthetic logs          │
+│  - Random intervals (1-5s)           │
+│  - Multiple log levels & services    │
+└──────────────┬──────────────────────┘
+               │
+               │ HTTP POST /app-logs/_doc
+               │ Content-Type: application/json
+               │
+               ▼
+┌─────────────────────────────────────┐
+│  Elasticsearch Container             │
+│  (v8.19.0)                           │
+│  - Port: 9200 (HTTP API)             │
+│  - Port: 9300 (Transport)            │
+│  - Single-node cluster               │
+│  - Security disabled (dev mode)      │
+│  - Volume: elasticsearch-data        │
+└──────────────┬──────────────────────┘
+               │
+               │ Connected via elk-network
+               │
+               ▼
+┌─────────────────────────────────────┐
+│  Elasticvue Container                │
+│  (Web UI)                            │
+│  - Port: 8080                        │
+│  - Browse & query data               │
+│  - Visual interface                  │
+└─────────────────────────────────────┘
+         Access via browser:
+         http://localhost:8080
 ```
 ┌─────────────────────────────────────┐
 │  Log Generator Container             │
