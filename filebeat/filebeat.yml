@@ -1,11 +1,30 @@
 filebeat.inputs:
+# Python log generator logs
 - type: filestream
   enabled: true
   id: app-logs
   paths:
     - /var/log/app/*.log
   fields:
-    log_source: filebeat
+    log_source: python-generator
+    app_name: log-generator
+  fields_under_root: true
+
+# Laravel application logs
+- type: filestream
+  enabled: true
+  id: laravel-logs
+  paths:
+    - /var/log/laravel/*.log
+  parsers:
+    - ndjson:
+        target: ""
+        overwrite_keys: true
+        add_error_key: true
+        expand_keys: false
+  fields:
+    log_source: laravel-app
+    app_name: application-logger
   fields_under_root: true
 
 # Kafka output

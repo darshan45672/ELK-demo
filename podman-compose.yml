@@ -25,13 +25,28 @@ services:
       timeout: 5s
       retries: 30
 
-  log-generator:
-    build: ./log-generator
-    container_name: log-generator
+  # log-generator:
+  #   build: ./log-generator
+  #   container_name: log-generator
+  #   volumes:
+  #     - app-logs:/var/log/app
+  #   networks:
+  #     - elk-network
+
+  laravel-app:
+    build: ./Application-Logger
+    container_name: laravel-app
+    ports:
+      - "8000:8000"
     volumes:
-      - app-logs:/var/log/app
+      - ./Application-Logger:/var/www/html
+      - laravel-logs:/var/www/html/storage/logs
+    working_dir: /var/www/html
+    command: php artisan serve --host=0.0.0.0 --port=8000
     networks:
       - elk-network
+    depends_on:
+      - elasticsearch
 
   zookeeper:
     image: wurstmeister/zookeeper:latest
@@ -127,19 +142,22 @@ services:
       - ./filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
       - filebeat-data:/usr/share/filebeat/data
       - app-logs:/var/log/app:ro
+      - laravel-logs:/var/log/laravel:ro
     command: filebeat -e --strict.perms=false
     depends_on:
       kafka:
         condition: service_healthy
     networks:
       - elk-network
-
 volumes:
   elasticsearch-data:
     driver: local
   filebeat-data:
     driver: local
   app-logs:
+    driver: local
+  laravel-logs:
+    driver: local
     driver: local
 
 networks:
