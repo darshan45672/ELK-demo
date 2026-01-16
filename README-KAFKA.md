@@ -13,7 +13,8 @@ flowchart LR
     K["Kafka<br/>(Port 9092)"]
     D["Logstash<br/>(Consumer)"]
     E["Elasticsearch<br/>(Port 9200)"]
-    F["Elasticvue<br/>(Port 8080)"]
+    F["Kibana<br/>(Port 5601)"]
+    G["Elasticvue<br/>(Port 8080)"]
     
     A -->|"Write logs"| B
     B -->|"Tail"| C
@@ -21,7 +22,8 @@ flowchart LR
     Z -.->|"Coordinate"| K
     K -->|"Consume"| D
     D -->|"Index"| E
-    F -->|"Query"| E
+    F -->|"Visualize"| E
+    G -->|"Query"| E
     
     style A fill:#e1f5ff
     style B fill:#fff4e6
@@ -31,13 +33,14 @@ flowchart LR
     style D fill:#f3e5f5
     style E fill:#fce4ec
     style F fill:#e1bee7
+    style G fill:#f0f0f0
 ```
 
 ## Data Flow
 
 **Complete Pipeline:**
 ```
-Log Generator → Files → Filebeat → Kafka Topic → Logstash → Elasticsearch ← Elasticvue
+Log Generator → Files → Filebeat → Kafka Topic → Logstash → Elasticsearch ← Kibana/Elasticvue
 ```
 
 This setup demonstrates the industry-standard pattern for high-volume logging:
@@ -46,7 +49,8 @@ This setup demonstrates the industry-standard pattern for high-volume logging:
 - **Kafka** provides durable message buffering and decoupling
 - **Logstash** consumes from Kafka, parses JSON, and enriches data
 - **Elasticsearch** stores and indexes processed logs
-- **Elasticvue** provides visualization and search capabilities
+- **Kibana** provides powerful visualization, dashboards, and analytics
+- **Elasticvue** (optional) provides lightweight browser-based queries
 
 ## Components
 
@@ -56,7 +60,8 @@ This setup demonstrates the industry-standard pattern for high-volume logging:
 4. **Zookeeper**: Cluster coordination for Kafka
 5. **Kafka**: Distributed message queue and streaming platform
 6. **Logstash** (v8.19.0): Data processing pipeline (Kafka consumer)
-7. **Elasticvue**: Browser-based Elasticsearch UI
+7. **Kibana** (v8.19.0): Analytics and visualization platform
+8. **Elasticvue** (optional): Lightweight browser-based Elasticsearch UI
 
 ## Why Kafka?
 
@@ -89,14 +94,15 @@ This setup demonstrates the industry-standard pattern for high-volume logging:
 podman-compose up -d
 ```
 
-This starts all 7 services:
+This starts all 8 services:
 - Elasticsearch (ports 9200, 9300)
 - Zookeeper (port 2181)
 - Kafka (port 9092)
 - Log Generator (writes to /var/log/app/)
 - Filebeat (produces to Kafka topic "filebeat-logs")
 - Logstash (consumes from Kafka, processes, sends to ES)
-- Elasticvue (port 8080)
+- Kibana (port 5601)
+- Elasticvue (port 8080, optional)
 
 ### Verify the Pipeline
 
@@ -120,7 +126,163 @@ curl -s 'http://localhost:9200/kafka-logstash-logs-*/_search?size=1&sort=@timest
   jq '.hits.hits[0]._source | {timestamp: ."@timestamp", level: .app.level, service: .app.service, message: .app.message}'
 ```
 
-### Access Elasticvue
+## Access Kibana
+
+Kibana is the primary visualization and analytics interface for your logs.
+
+### Open Kibana
+
+Open browser: **http://localhost:5601**
+
+Kibana will automatically connect to Elasticsearch. The first time you open Kibana, you'll see the welcome screen.
+
+### Create Data View (Index Pattern)
+
+Before you can visualize data, you need to create a Data View:
+
+1. **Navigate to Management**:
+   - Click the hamburger menu (☰) in the top left
+   - Go to **Management** → **Stack Management**
+   - Select **Kibana** → **Data Views**
+
+2. **Create Data View**:
+   - Click **"Create data view"** button
+   - **Name**: `Kafka Logs`
+   - **Index pattern**: `kafka-logstash-logs-*`
+   - **Timestamp field**: `@timestamp`
+   - Click **"Save data view to Kibana"**
+
+Alternatively, create it via API:
+```bash
+curl -X POST "http://localhost:5601/api/data_views/data_view" \
+  -H 'Content-Type: application/json' \
+  -H 'kbn-xsrf: true' \
+  -d '{
+  "data_view": {
+    "title": "kafka-logstash-logs-*",
+    "name": "Kafka Logs",
+    "timeFieldName": "@timestamp"
+  }
+}'
+```
+
+### Discover Logs
+
+1. **Open Discover**:
+   - Click the hamburger menu (☰)
+   - Select **Analytics** → **Discover**
+
+2. **Select Data View**:
+   - In the top left dropdown, select **"Kafka Logs"**
+
+3. **Explore Your Logs**:
+   - You'll see all logs in a timeline view
+   - Time range selector in top right (default: Last 15 minutes)
+   - Click on any log to expand and see all fields
+   - Use the search bar for KQL queries
+
+### Example Kibana Queries (KQL)
+
+**Filter by log level:**
+```kql
+app.level: "ERROR"
+```
+
+**Filter by service:**
+```kql
+app.service: "payment-service"
+```
+
+**Multiple conditions (AND):**
+```kql
+app.level: "ERROR" AND app.service: "payment-service"
+```
+
+**Multiple conditions (OR):**
+```kql
+app.level: ("ERROR" OR "WARNING")
+```
+
+**Find slow requests:**
+```kql
+app.duration_ms > 2000
+```
+
+**Wildcard search in message:**
+```kql
+app.message: *timeout*
+```
+
+**Combine filters:**
+```kql
+app.level: "ERROR" AND app.duration_ms > 1000
+```
+
+### Create Visualizations
+
+1. **Navigate to Visualize**:
+   - Hamburger menu (☰) → **Analytics** → **Visualize Library**
+   - Click **"Create visualization"**
+
+2. **Choose Visualization Type**:
+   - **Bar chart**: Logs over time by level
+   - **Pie chart**: Distribution by service
+   - **Line chart**: Trends over time
+   - **Data table**: Detailed breakdowns
+   - **Metric**: Count of errors
+
+3. **Example: Logs by Level (Pie Chart)**:
+   - Select **Pie** chart
+   - Choose data view: **Kafka Logs**
+   - Click **"Add field"** for slice
+   - Select **"app.level"**
+   - Top values: 10
+   - Click **"Save"** and name it "Logs by Level"
+
+4. **Example: Logs Over Time (Bar Chart)**:
+   - Select **Bar vertical** chart
+   - Choose data view: **Kafka Logs**
+   - X-axis: Timestamp (automatic)
+   - Breakdown by: **app.level**
+   - Save as "Logs Timeline"
+
+5. **Example: Top Services (Data Table)**:
+   - Select **Table**
+   - Metrics: Count
+   - Split rows: Terms → **app.service.keyword**
+   - Order by: Metric descending
+   - Save as "Top Services"
+
+### Create Dashboard
+
+1. **Create New Dashboard**:
+   - Hamburger menu (☰) → **Analytics** → **Dashboard**
+   - Click **"Create dashboard"**
+
+2. **Add Visualizations**:
+   - Click **"Add from library"**
+   - Select the visualizations you created
+   - Arrange and resize panels as needed
+
+3. **Example Dashboard Layout**:
+   ```
+   ┌─────────────────────────────────────────┐
+   │  Total Logs (Metric)   │  Error Rate   │
+   ├─────────────────────────────────────────┤
+   │  Logs Timeline (Bar Chart)              │
+   ├─────────────────────────────────────────┤
+   │  Logs by Level  │  Top Services         │
+   │  (Pie Chart)    │  (Data Table)         │
+   └─────────────────────────────────────────┘
+   ```
+
+4. **Save Dashboard**:
+   - Click **"Save"** in top right
+   - Name: "Kafka Logs Overview"
+   - Add description (optional)
+   - Click **"Save"**
+
+### Elasticvue (Optional Lightweight Alternative)
 
 Open browser: http://localhost:8080
 
@@ -504,3 +666,4 @@ To extend this setup:
 - [Filebeat Kafka Output](https://www.elastic.co/guide/en/beats/filebeat/current/kafka-output.html)
 - [Logstash Kafka Input](https://www.elastic.co/guide/en/logstash/current/plugins-inputs-kafka.html)
 - [Elastic Stack Documentation](https://www.elastic.co/guide/index.html)
+- **[KIBANA-GUIDE.md](./KIBANA-GUIDE.md)**: Complete Kibana visualization tutorial

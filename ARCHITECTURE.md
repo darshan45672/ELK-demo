@@ -1,6 +1,6 @@
 # ELK Demo Architecture Evolution
 
-This document explains the evolution of our logging architecture through four phases, detailing how each component works, why changes were made, and the benefits of each approach.
+This document explains the evolution of our logging architecture through five phases, detailing how each component works, why changes were made, and the benefits of each approach.
 
 ---
 
@@ -10,8 +10,9 @@ This document explains the evolution of our logging architecture through four ph
 2. [Phase 2: Filebeat Integration](#phase-2-filebeat-integration)
 3. [Phase 3: Complete ELK Stack with Logstash](#phase-3-complete-elk-stack-with-logstash)
 4. [Phase 4: Kafka Message Queue Integration](#phase-4-kafka-message-queue-integration)
-5. [Comparison Matrix](#comparison-matrix)
-6. [Best Practices & Lessons Learned](#best-practices--lessons-learned)
+5. [Phase 5: Kibana Analytics Platform](#phase-5-kibana-analytics-platform)
+6. [Comparison Matrix](#comparison-matrix)
+7. [Best Practices & Lessons Learned](#best-practices--lessons-learned)
 
 ---
 
@@ -1437,42 +1438,628 @@ podman exec kafka kafka-console-consumer.sh \
 
 ---
 
+## Phase 5: Kibana Analytics Platform
+
+### Overview
+
+Phase 5 introduces **Kibana** as the professional analytics and visualization platform for the Elastic Stack. While Elasticvue provides basic query capabilities, Kibana offers enterprise-grade dashboards, advanced analytics, KQL queries, alerting, and collaboration features. This phase transforms our ELK stack into a complete observability platform.
+
+**Components: 8 services**
+- Log Generator (Python app)
+- Filebeat (log shipper)
+- Kafka + Zookeeper (message queue)
+- Logstash (data processor)
+- Elasticsearch (storage)
+- **Kibana (analytics platform) ← NEW**
+- Elasticvue (lightweight alternative)
+
+### Architecture Diagram
+
+```mermaid
+graph TB
+    subgraph "Log Generation"
+        A[Python Log Generator<br/>Port: None<br/>Generates JSON logs]
+    end
+    
+    subgraph "Collection Layer"
+        B[Filebeat<br/>Port: 5066<br/>Watches: /app/logs/*.log]
+    end
+    
+    subgraph "Message Queue"
+        C[Zookeeper<br/>Port: 2181<br/>Coordination]
+        D[Kafka<br/>Port: 9092<br/>Topic: filebeat-logs]
+    end
+    
+    subgraph "Processing Layer"
+        E[Logstash<br/>Port: 5044<br/>Parses & enriches logs]
+    end
+    
+    subgraph "Storage Layer"
+        F[Elasticsearch<br/>Port: 9200<br/>Index: kafka-logstash-logs-*]
+    end
+    
+    subgraph "Visualization Layer"
+        G[Kibana<br/>Port: 5601<br/>Professional Analytics]
+        H[Elasticvue<br/>Port: 8080<br/>Lightweight Queries]
+    end
+    
+    A -->|Writes logs| B
+    B -->|Ships logs| D
+    C -->|Manages| D
+    D -->|Consumes logs| E
+    E -->|Indexes logs| F
+    F -.->|Query data| G
+    F -.->|Query data| H
+    
+    style A fill:#90EE90
+    style B fill:#87CEEB
+    style C fill:#DDA0DD
+    style D fill:#F0E68C
+    style E fill:#FFB6C1
+    style F fill:#FFD700
+    style G fill:#FF6347
+    style H fill:#98FB98
+```
+
+### Sequence Diagram: Kibana Visualization Flow
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant Kibana
+    participant ES as Elasticsearch
+    participant Logs as kafka-logstash-logs-*
+    
+    Note over User,Kibana: 1. Initial Setup
+    User->>Kibana: Create Data View<br/>(kafka-logstash-logs-*)
+    Kibana->>ES: GET /_mapping
+    ES-->>Kibana: Return field mappings
+    Kibana-->>User: Data View ready
+    
+    Note over User,Kibana: 2. Discover Logs
+    User->>Kibana: Open Discover<br/>Apply KQL filter
+    Kibana->>ES: POST /kafka-logstash-logs-*/_search<br/>{ query: { bool: { filter: [...] } } }
+    ES->>Logs: Query indices
+    Logs-->>ES: Return matching docs
+    ES-->>Kibana: Search results
+    Kibana-->>User: Display log entries
+    
+    Note over User,Kibana: 3. Create Visualization
+    User->>Kibana: Create Pie Chart<br/>(by log_level)
+    Kibana->>ES: POST /_search<br/>{ aggs: { levels: { terms: { field: "log_level.keyword" } } } }
+    ES->>Logs: Aggregate data
+    Logs-->>ES: Aggregation results
+    ES-->>Kibana: Bucket counts
+    Kibana-->>User: Render pie chart
+    
+    Note over User,Kibana: 4. Build Dashboard
+    User->>Kibana: Add visualizations<br/>to dashboard
+    User->>Kibana: Set time range filter
+    Kibana->>ES: Execute all panel queries<br/>(parallel requests)
+    ES-->>Kibana: All results
+    Kibana-->>User: Render dashboard
+    
+    Note over User,Kibana: 5. Share & Collaborate
+    User->>Kibana: Generate shareable link
+    Kibana-->>User: Dashboard URL
+    User->>User: Share with team
+```
+
+### Why This Change?
+
+Moving from basic Elasticvue to professional Kibana addresses several limitations:
+
+1. **Professional Dashboards**: Multi-panel layouts with drill-down capabilities vs simple query interface
+2. **Advanced Analytics**: Aggregations, metrics, time-series analysis vs basic document viewing
+3. **KQL (Kibana Query Language)**: Powerful query syntax with autocomplete vs manual JSON queries
+4. **Alerting & Monitoring**: Threshold alerts, anomaly detection, watcher integration
+5. **Collaboration**: Saved searches, shared dashboards, role-based access control
+6. **Lens & Canvas**: No-code visualization builder and presentation tools
+7. **Enterprise Features**: Reporting, PDF export, embedding, API access
+
+**Key Differences:**
+
+| Aspect | Elasticvue | Kibana |
+|--------|-----------|---------|
+| **Target Users** | Developers, quick debugging | Analysts, ops teams, management |
+| **Complexity** | Lightweight, minimal setup | Full-featured, more resources |
+| **Visualizations** | Basic query results | Professional charts & dashboards |
+| **Query Interface** | JSON REST API | KQL + Lucene + visual builders |
+| **Memory Usage** | ~50MB | ~1GB |
+| **Learning Curve** | 5 minutes | 2-3 hours |
+| **Use Case** | Dev/test, simple queries | Production, enterprise analytics |
+
+### Implementation Changes
+
+#### 1. Podman Compose Configuration
+
+Added Kibana service to `podman-compose.yml`:
+
+```yaml
+  kibana:
+    image: docker.io/elastic/kibana:8.19.0
+    container_name: kibana
+    ports:
+      - "5601:5601"
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+      - XPACK_SECURITY_ENABLED=false
+      - SERVER_HOST=0.0.0.0
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:5601/api/status || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 30
+      start_period: 60s
+    networks:
+      - elk
+```
+
+**Configuration Breakdown:**
+
+| Parameter | Value | Purpose |
+|-----------|-------|---------|
+| `image` | `docker.io/elastic/kibana:8.19.0` | Official Kibana image (Docker Hub for reliability) |
+| `ports` | `5601:5601` | Web UI access |
+| `ELASTICSEARCH_HOSTS` | `http://elasticsearch:9200` | Connect to ES without TLS |
+| `XPACK_SECURITY_ENABLED` | `false` | Disable authentication for development |
+| `SERVER_HOST` | `0.0.0.0` | Listen on all interfaces |
+| `depends_on` | `elasticsearch: healthy` | Wait for ES to be ready |
+| `healthcheck` | `/api/status` endpoint | Verify Kibana is operational |
+| `start_period` | `60s` | Give Kibana time to initialize |
+| `retries` | `30` | Allow 15 minutes for startup |
+
+**Why Docker Hub Instead of Elastic Registry?**
+
+Initial attempts with `docker.elastic.co/kibana/kibana:8.19.0` failed with TLS certificate errors:
+```
+tls: failed to verify certificate: x509: certificate signed by unknown authority
+```
+
+Switching to `docker.io/elastic/kibana:8.19.0` resolved this issue and proved more reliable for development environments.
+
+### How Kibana Works
+
+#### 1. Data Views (Index Patterns)
+
+**Concept**: Data views tell Kibana which Elasticsearch indices to query. They define field mappings and time range filters.
+
+**Create Data View via UI:**
+```
+1. Open Kibana → Management → Stack Management → Data Views
+2. Click "Create data view"
+3. Name: "Kafka Logs"
+4. Index pattern: kafka-logstash-logs-*
+5. Time field: @timestamp
+6. Save
+```
+
+**Create Data View via Dev Tools:**
+```json
+POST /api/data_views/data_view
+{
+  "data_view": {
+    "title": "kafka-logstash-logs-*",
+    "name": "Kafka Logs",
+    "timeFieldName": "@timestamp"
+  }
+}
+```
+
+#### 2. Discover Interface
+
+**Features:**
+- Time range picker (last 15 minutes, 24 hours, 7 days, custom)
+- KQL query bar with autocomplete
+- Field filters (include/exclude)
+- Column selection (customize log display)
+- Document inspection (view raw JSON)
+- Saved searches (reusable queries)
+
+**Example KQL Queries:**
+
+```kql
+# Logs at ERROR or CRITICAL level
+log_level: (ERROR or CRITICAL)
+
+# Logs from specific operation
+message: *database* and operation_type: "INSERT"
+
+# Logs within time range with high latency
+@timestamp >= "2024-01-01" and response_time > 500
+
+# Exclude INFO logs
+not log_level: INFO
+
+# Multiple field conditions
+service_name: "auth-service" and status_code >= 400 and log_level: ERROR
+```
+
+#### 3. Visualizations
+
+**Types Available:**
+- **Area**: Time-series trends with filled area
+- **Line**: Multiple metric time-series
+- **Bar**: Horizontal/vertical comparisons
+- **Pie/Donut**: Proportion breakdowns
+- **Metric**: Single KPI values
+- **Data Table**: Tabular aggregations
+- **Heat Map**: Density visualization
+- **Tag Cloud**: Text frequency
+- **TSVB (Time Series Visual Builder)**: Advanced time-series
+- **Vega**: Custom D3-style charts
+
+**Example: Log Level Distribution Pie Chart**
+
+```
+1. Analytics → Visualize Library → Create visualization → Pie
+2. Choose data view: kafka-logstash-logs-*
+3. Slice by: Terms aggregation on log_level.keyword
+4. Size: 10
+5. Metric: Count
+6. Save as "Log Levels Distribution"
+```
+
+**Example: Response Time Line Chart**
+
+```
+1. Analytics → Visualize Library → Create visualization → Line
+2. Choose data view: kafka-logstash-logs-*
+3. Y-axis: Average of response_time
+4. X-axis: Date Histogram of @timestamp (interval: 1 minute)
+5. Breakdown: Terms on operation_type.keyword
+6. Save as "Response Times by Operation"
+```
+
+#### 4. Dashboards
+
+**Features:**
+- Multi-panel layouts
+- Shared time range and filters
+- Drill-down between panels
+- Auto-refresh options
+- Export to PDF/PNG
+- Embedding via iframe
+- Role-based sharing
+
+**Example Layout:**
+
+```
+┌──────────────────────────────────────────────────────┐
+│  Log Volume (Last 24h) - Line Chart                  │
+│  Shows: Count over time                              │
+├─────────────────────────┬────────────────────────────┤
+│ Log Levels - Pie Chart  │ Top Services - Bar Chart   │
+│ Shows: ERROR/WARN/INFO  │ Shows: Log count by service│
+├─────────────────────────┴────────────────────────────┤
+│  Recent Errors - Data Table                          │
+│  Shows: Last 50 ERROR/CRITICAL logs                  │
+└──────────────────────────────────────────────────────┘
+```
+
+**Create Dashboard:**
+```
+1. Analytics → Dashboard → Create dashboard
+2. Add panels:
+   - Click "Add from library" to use existing visualizations
+   - Click "Create visualization" for new panels
+3. Arrange layout (drag and resize)
+4. Add controls:
+   - Time range picker
+   - Field filters (log_level, service_name)
+5. Save dashboard with name and description
+```
+
+### Advanced Kibana Features
+
+#### 1. Lens (No-Code Visualization Builder)
+
+Drag-and-drop interface for creating visualizations without writing queries:
+
+```
+1. Analytics → Visualize Library → Create visualization → Lens
+2. Drag fields from left sidebar to drop zones
+3. Choose chart type (bar, line, area, metric, etc.)
+4. Adjust aggregations (count, sum, avg, max, min)
+5. Apply filters and breakdowns
+6. Save to dashboard
+```
+
+**Use Cases:**
+- Ad-hoc analysis without KQL knowledge
+- Quick metric exploration
+- Rapid dashboard prototyping
+
+#### 2. Canvas (Presentation Mode)
+
+Create pixel-perfect presentations and reports:
+
+```
+1. Analytics → Canvas → Create workpad
+2. Add elements:
+   - Markdown text
+   - Images/logos
+   - Visualizations
+   - Metrics
+3. Design layout with precise positioning
+4. Apply filters and variables
+5. Export as PDF or present fullscreen
+```
+
+#### 3. Alerting & Monitoring
+
+Set up threshold alerts for log anomalies:
+
+```
+1. Management → Stack Management → Alerts and Insights → Rules
+2. Create rule:
+   - Type: Elasticsearch query
+   - Index: kafka-logstash-logs-*
+   - Query: log_level: ERROR
+   - Threshold: Count > 10 in 5 minutes
+3. Actions:
+   - Email notification
+   - Slack webhook
+   - PagerDuty integration
+```
+
+#### 4. Dev Tools Console
+
+Direct Elasticsearch API access for power users:
+
+```
+# Execute raw queries
+GET /kafka-logstash-logs-*/_search
+{
+  "query": {
+    "bool": {
+      "must": [
+        { "range": { "@timestamp": { "gte": "now-1h" } } },
+        { "term": { "log_level.keyword": "ERROR" } }
+      ]
+    }
+  }
+}
+
+# Index management
+GET /_cat/indices/kafka-logstash-logs-*?v&s=index:desc
+
+# Cluster health
+GET /_cluster/health
+```
+
+### Advantages of Phase 5
+
+#### 1. **Professional Analytics**
+- Enterprise-grade dashboards comparable to Grafana or Datadog
+- Real-time data exploration with subsecond response
+- Advanced aggregations and statistical analysis
+
+#### 2. **User Experience**
+- Intuitive UI designed for analysts and operations teams
+- No coding required for basic visualizations (Lens)
+- Context-aware help and documentation
+
+#### 3. **Collaboration & Sharing**
+- Save and share searches, visualizations, dashboards
+- Role-based access control (RBAC)
+- Export reports for management
+
+#### 4. **Powerful Query Language (KQL)**
+```kql
+# Simple syntax
+log_level: ERROR
+
+# Boolean logic
+(log_level: ERROR or log_level: CRITICAL) and service_name: "payment-service"
+
+# Wildcard matching
+message: *timeout* or message: *connection*failed*
+
+# Range queries
+response_time > 1000 and status_code >= 500
+
+# Negation
+not log_level: DEBUG
+```
+
+#### 5. **Extensibility**
+- Plugin ecosystem (integrations for AWS, Azure, monitoring)
+- Custom visualizations via Vega
+- API access for automation
+
+#### 6. **Observability Features**
+- APM (Application Performance Monitoring) integration
+- Uptime monitoring
+- Infrastructure monitoring
+- Security analytics (SIEM)
+
+#### 7. **Production Ready**
+- Battle-tested in enterprise environments
+- High availability configuration support
+- Backup and restore capabilities
+
+### Disadvantages of Phase 5
+
+#### 1. **Resource Intensive**
+```
+Memory Usage:
+- Kibana: ~1GB RAM (vs Elasticvue: ~50MB)
+- Startup Time: 30-60 seconds (vs Elasticvue: 5 seconds)
+```
+
+#### 2. **Complexity**
+- Steeper learning curve (2-3 hours vs 5 minutes)
+- More configuration options can be overwhelming
+- Requires understanding of data views, KQL, aggregations
+
+#### 3. **Development Overhead**
+```yaml
+# Additional service in podman-compose.yml
+- More port mappings to manage
+- Health check dependencies
+- Environment variables
+```
+
+#### 4. **Overkill for Simple Use Cases**
+- If you just need to search logs, Elasticvue is sufficient
+- Small projects may not benefit from advanced features
+- Single-developer setups don't need collaboration features
+
+#### 5. **Network Overhead**
+- More HTTP requests for dashboard rendering
+- JavaScript-heavy frontend requires good network
+- Multiple panel queries can spike ES load
+
+#### 6. **License Considerations**
+- Kibana is Elastic License (not pure open source)
+- Some features require paid subscriptions
+- Commercial use may require license compliance review
+
+### When to Use Phase 5
+
+#### ✅ **Use Kibana When:**
+
+1. **Team Collaboration**
+   - Multiple people need to view and analyze logs
+   - Shared dashboards for ops/dev/management
+   - Need role-based access control
+
+2. **Complex Analytics**
+   - Time-series analysis and trend detection
+   - Statistical aggregations (percentiles, histograms)
+   - Multi-dimensional filtering and drill-down
+
+3. **Production Environments**
+   - Need alerting and monitoring
+   - Compliance and audit trail requirements
+   - Integration with SIEM or observability platforms
+
+4. **Business Stakeholders**
+   - Management wants visual reports
+   - Need PDF exports for meetings
+   - Presentation mode for demos
+
+5. **Enterprise Scale**
+   - Multiple services generating logs
+   - High volume requiring sophisticated analysis
+   - Integration with other Elastic Stack products (APM, Uptime)
+
+#### ❌ **Stick with Elasticvue When:**
+
+1. **Development/Testing**
+   - Quick log debugging during development
+   - Personal projects or learning
+   - Rapid prototyping without visualization needs
+
+2. **Resource Constraints**
+   - Limited memory or CPU
+   - Running on developer laptops
+   - Containerized environments with strict limits
+
+3. **Simple Queries**
+   - Basic text search is sufficient
+   - Don't need aggregations or visualizations
+   - Occasional log lookups
+
+4. **Single User**
+   - No sharing requirements
+   - Personal log analysis
+   - No need for saved searches or dashboards
+
+### Migration Path
+
+If starting with Elasticvue and later want Kibana:
+
+1. **Keep Both Running**: Use Elasticvue for quick queries, Kibana for analysis
+2. **Gradual Adoption**: Start with Discover, then add visualizations, finally dashboards
+3. **Training**: Allocate 2-3 hours for team onboarding
+4. **Documentation**: Reference `KIBANA-GUIDE.md` for detailed tutorials
+
+### Performance Comparison
+
+| Metric | Elasticvue | Kibana |
+|--------|-----------|---------|
+| **Startup Time** | 5 seconds | 30-60 seconds |
+| **Memory (Idle)** | 50MB | 800MB |
+| **Memory (Active)** | 100MB | 1200MB |
+| **Query Latency** | 50-100ms | 100-200ms (with visualization rendering) |
+| **Dashboard Load** | N/A | 500ms-2s (depends on panel count) |
+| **Concurrent Users** | 5-10 | 50-100+ |
+| **CPU Usage** | Minimal | Moderate (visualization rendering) |
+
+### Summary
+
+Phase 5 completes the evolution from simple logging to enterprise-grade observability:
+
+**Phase 1 → 2 → 3 → 4 → 5 Evolution:**
+1. **Direct Integration**: Proof of concept (2 services)
+2. **Filebeat**: Decoupling (3 services)
+3. **Logstash**: Structured parsing (5 services)
+4. **Kafka**: Durability and scaling (7 services)
+5. **Kibana**: Professional analytics (8 services) ✅
+
+**When You've Arrived:**
+- ✅ Production-grade logging pipeline
+- ✅ Enterprise analytics and visualization
+- ✅ Team collaboration and sharing
+- ✅ Alerting and monitoring capabilities
+- ✅ Compliance and audit trail
+- ✅ Scalable, durable, and observable
+
+**Next Steps:**
+- Explore Kibana's advanced features (Lens, Canvas, Alerting)
+- Create custom dashboards for your services
+- Set up alerts for critical log patterns
+- Integrate with APM for full observability
+- Consider Elastic Cloud for managed hosting
+
+---
+
 ## Comparison Matrix
 
 ### Feature Comparison
 
-| Feature | Phase 1 (Direct) | Phase 2 (Filebeat) | Phase 3 (Logstash) | Phase 4 (Kafka) |
-|---------|------------------|--------------------|--------------------|-----------------|
-| **Components** | 2 (App + ES) | 3 (App + FB + ES) | 5 (App + FB + LS + ES + UI) | 7 (App + FB + ZK + Kafka + LS + ES + UI) |
-| **Latency** | <10ms | ~1s (batching) | ~2s (batching + processing) | ~3s (batching + queue + processing) |
-| **Structured Data** | ✅ Yes | ❌ No (string) | ✅ Yes (parsed) | ✅ Yes (parsed) |
-| **Queryable Fields** | ✅ All fields | ❌ Full-text only | ✅ All parsed fields | ✅ All parsed fields |
-| **Resilience** | ❌ Low | ✅ Medium | ✅ High | ✅ Very High |
-| **Buffering** | ❌ None | ✅ File-based | ✅ File + Queue | ✅ File + Kafka (disk) |
-| **Data Enrichment** | ❌ None | ⚠️ Limited | ✅ Full | ✅ Full |
-| **Transformation** | ❌ None | ⚠️ Basic | ✅ Advanced | ✅ Advanced |
-| **Filtering** | ❌ No | ⚠️ Limited | ✅ Full | ✅ Full |
-| **Multiple Outputs** | ❌ No | ❌ No | ✅ Yes | ✅ Yes (multiple consumers) |
-| **Replay Capability** | ❌ No | ❌ No | ❌ No | ✅ Yes (offset reset) |
-| **Horizontal Scaling** | ❌ No | ⚠️ Limited | ⚠️ Limited | ✅ Yes (partitions) |
-| **Resource Usage** | Low | Low | Medium-High | High |
-| **Complexity** | Low | Medium | High | Very High |
-| **Setup Time** | 5 min | 15 min | 30 min | 45 min |
-| **Production Ready** | ❌ No | ⚠️ Basic | ✅ Yes | ✅ Enterprise |
+| Feature | Phase 1 (Direct) | Phase 2 (Filebeat) | Phase 3 (Logstash) | Phase 4 (Kafka) | Phase 5 (Kibana) |
+|---------|------------------|--------------------|--------------------|-----------------|------------------|
+| **Components** | 2 (App + ES) | 3 (App + FB + ES) | 5 (App + FB + LS + ES + UI) | 7 (App + FB + ZK + Kafka + LS + ES + UI) | 8 (+ Kibana analytics) |
+| **Latency** | <10ms | ~1s (batching) | ~2s (batching + processing) | ~3s (batching + queue + processing) | ~3s (+ dashboard render) |
+| **Structured Data** | ✅ Yes | ❌ No (string) | ✅ Yes (parsed) | ✅ Yes (parsed) | ✅ Yes (visualized) |
+| **Queryable Fields** | ✅ All fields | ❌ Full-text only | ✅ All parsed fields | ✅ All parsed fields | ✅ KQL + visual query builder |
+| **Resilience** | ❌ Low | ✅ Medium | ✅ High | ✅ Very High | ✅ Very High |
+| **Buffering** | ❌ None | ✅ File-based | ✅ File + Queue | ✅ File + Kafka (disk) | ✅ Same as Phase 4 |
+| **Data Enrichment** | ❌ None | ⚠️ Limited | ✅ Full | ✅ Full | ✅ Full + visualization context |
+| **Transformation** | ❌ None | ⚠️ Basic | ✅ Advanced | ✅ Advanced | ✅ Advanced |
+| **Filtering** | ❌ No | ⚠️ Limited | ✅ Full | ✅ Full | ✅ Full + visual filters |
+| **Multiple Outputs** | ❌ No | ❌ No | ✅ Yes | ✅ Yes (multiple consumers) | ✅ Yes + export (PDF/CSV) |
+| **Replay Capability** | ❌ No | ❌ No | ❌ No | ✅ Yes (offset reset) | ✅ Yes |
+| **Horizontal Scaling** | ❌ No | ⚠️ Limited | ⚠️ Limited | ✅ Yes (partitions) | ✅ Yes |
+| **Visualization** | ❌ None | ❌ None | ⚠️ Basic (Elasticvue) | ⚠️ Basic (Elasticvue) | ✅ Professional (Kibana) |
+| **Dashboards** | ❌ No | ❌ No | ❌ No | ❌ No | ✅ Yes (multi-panel, shared) |
+| **Alerting** | ❌ No | ❌ No | ❌ No | ❌ No | ✅ Yes (threshold, anomaly) |
+| **Collaboration** | ❌ No | ❌ No | ❌ No | ❌ No | ✅ Yes (saved, shared, RBAC) |
+| **Resource Usage** | Low | Low | Medium-High | High | Very High |
+| **Complexity** | Low | Medium | High | Very High | Very High |
+| **Setup Time** | 5 min | 15 min | 30 min | 45 min | 60 min |
+| **Production Ready** | ❌ No | ⚠️ Basic | ✅ Yes | ✅ Enterprise | ✅ Enterprise Analytics |
 
 ### Performance Comparison
 
-| Metric | Phase 1 | Phase 2 | Phase 3 | Phase 4 (Kafka) |
-|--------|---------|---------|---------|-----------------|
-| **Logs/Second** | ~100 | ~1,000 | ~5,000+ | ~10,000+ |
-| **Network Requests/Min** | 6,000 | ~20 | ~50 | ~100 |
-| **CPU Usage (App)** | Medium | Low | Low | Low |
-| **Memory Usage** | ~256MB | ~512MB | ~1.5GB | ~3GB |
-| **Disk I/O** | None | Medium | Medium | High (Kafka logs) |
-| **Data Loss Risk** | High | Low | Very Low | Minimal (durable) |
-| **Recovery Time** | N/A | 10-30 min | 5-10 min | 1-5 min |
-| **Disk I/O** | None | Medium | Medium |
-| **Data Loss Risk** | High | Low | Very Low |
+| Metric | Phase 1 | Phase 2 | Phase 3 | Phase 4 (Kafka) | Phase 5 (Kibana) |
+|--------|---------|---------|---------|-----------------|------------------|
+| **Logs/Second** | ~100 | ~1,000 | ~5,000+ | ~10,000+ | ~10,000+ (same) |
+| **Network Requests/Min** | 6,000 | ~20 | ~50 | ~100 | ~150 (+ dashboard queries) |
+| **CPU Usage (App)** | Medium | Low | Low | Low | Low |
+| **CPU Usage (Kibana)** | N/A | N/A | N/A | N/A | Medium (visualization) |
+| **Memory Usage** | ~256MB | ~512MB | ~1.5GB | ~3GB | ~4GB (+ Kibana 1GB) |
+| **Disk I/O** | None | Medium | Medium | High (Kafka logs) | High |
+| **Data Loss Risk** | High | Low | Very Low | Minimal (durable) | Minimal |
+| **Recovery Time** | N/A | 10-30 min | 5-10 min | 1-5 min | 1-5 min |
+| **Dashboard Load Time** | N/A | N/A | N/A | N/A | 500ms-2s |
+| **Concurrent Users** | N/A | N/A | 5-10 (Elasticvue) | 5-10 (Elasticvue) | 50-100+ (Kibana) |
 
 ### Use Case Recommendations
 
@@ -1482,14 +2069,19 @@ podman exec kafka kafka-console-consumer.sh \
 | Testing/Staging | Phase 2 | Good balance, realistic |
 | Production (Small) | Phase 2 or 3 | Reliable, cost-effective |
 | Production (Medium) | Phase 3 | Full features, manageable complexity |
-| Production (Enterprise) | Phase 4 | Maximum reliability, scalability |
-| High Volume (>10k logs/s) | Phase 4 | Kafka designed for high throughput |
-| Complex Log Formats | Phase 3 or 4 | Logstash parsing capabilities |
-| Multiple Data Sources | Phase 3 or 4 | Unified pipeline |
-| Multiple Destinations | Phase 4 | Kafka allows multiple consumers |
-| Replay Requirements | Phase 4 | Only Kafka supports offset reset |
-| Compliance Requirements | Phase 3 or 4 | Audit trail, filtering |
-| Microservices Architecture | Phase 4 | Decoupling, independent scaling |
+| Production (Enterprise) | Phase 4 or 5 | Maximum reliability, scalability, analytics |
+| High Volume (>10k logs/s) | Phase 4 or 5 | Kafka designed for high throughput |
+| Complex Log Formats | Phase 3, 4, or 5 | Logstash parsing capabilities |
+| Multiple Data Sources | Phase 3, 4, or 5 | Unified pipeline |
+| Multiple Destinations | Phase 4 or 5 | Kafka allows multiple consumers |
+| Replay Requirements | Phase 4 or 5 | Only Kafka supports offset reset |
+| Compliance Requirements | Phase 3, 4, or 5 | Audit trail, filtering |
+| Microservices Architecture | Phase 4 or 5 | Decoupling, independent scaling |
+| **Analytics & Dashboards** | **Phase 5** | **Professional visualization, KQL queries** |
+| **Team Collaboration** | **Phase 5** | **Shared dashboards, saved searches, RBAC** |
+| **Management Reporting** | **Phase 5** | **PDF exports, presentation mode** |
+| **Alerting & Monitoring** | **Phase 5** | **Threshold alerts, anomaly detection** |
+| **Observability Platform** | **Phase 5** | **Full-stack visibility with APM integration** |
 
 ---
 
@@ -1616,6 +2208,7 @@ Minimum recommended resources:
 | Filebeat | 0.5 core | 128MB | 1GB | Lightweight |
 | Kafka | 2 cores | 1GB | 20GB | For 7-day retention |
 | Zookeeper | 1 core | 512MB | 5GB | Cluster coordination |
+| Kibana | 1 core | 1GB | 2GB | Visualization platform (Phase 5) |
 
 ### 9. Common Pitfalls
 
@@ -1629,21 +2222,34 @@ Minimum recommended resources:
 | Kafka lag growing | Consumer too slow | Add more partitions + consumers |
 | Zookeeper connection issues | Network or timing | Check Zookeeper health, increase timeout |
 | Messages not in Kafka | Topic doesn't exist | Enable auto-create or create manually |
+| Kibana not connecting | ES not ready | Check ES health, verify ELASTICSEARCH_HOSTS |
+| Kibana slow startup | Insufficient memory | Allocate at least 1GB RAM |
+| Data view not found | Index pattern incorrect | Verify index exists with GET /_cat/indices |
 
 ---
 
 ## Conclusion
 
-The evolution from direct Elasticsearch integration to a Kafka-based distributed logging pipeline demonstrates the progression from simplicity to enterprise-grade reliability:
+The evolution from direct Elasticsearch integration to a complete observability platform with Kibana demonstrates the progression from simplicity to enterprise-grade reliability and analytics:
 
 - **Phase 1** is perfect for quick prototypes and learning
 - **Phase 2** adds reliability and decoupling for basic production use
 - **Phase 3** provides the full power of the ELK stack for enterprise deployments
 - **Phase 4** adds Kafka for maximum scalability, durability, and flexibility
+- **Phase 5** completes the platform with professional analytics and visualization
 
 Choose the phase that matches your requirements:
 - **Start simple** (Phase 1-2) for development and small applications
 - **Add Logstash** (Phase 3) when you need parsing and transformation
 - **Add Kafka** (Phase 4) when you need high throughput, replay, or multiple consumers
+- **Add Kibana** (Phase 5) when you need dashboards, analytics, and team collaboration
 
 Remember: **Each phase builds on the previous one**. You can migrate incrementally as your needs grow.
+
+**Final Architecture (Phase 5):**
+```
+Log Generator → Filebeat → Kafka → Logstash → Elasticsearch ← Kibana (Analytics)
+                                                            ← Elasticvue (Lightweight)
+```
+
+**You've arrived at a production-ready observability platform** when you have all five phases implemented! 🎉
