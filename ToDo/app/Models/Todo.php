@@ -2,22 +2,12 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Todo extends Model
 {
-    /** @use HasFactory<\Database\Factories\TodoFactory> */
-    use HasFactory;
-
-    /**
-     * The attributes that are mass assignable.
-     *
-     * @var array<int, string>
-     */
     protected $fillable = [
-        'user_id',
         'title',
         'description',
         'completed',
@@ -25,18 +15,10 @@ class Todo extends Model
         'priority',
     ];
 
-    /**
-     * Get the attributes that should be cast.
-     *
-     * @return array<string, string>
-     */
-    protected function casts(): array
-    {
-        return [
-            'completed' => 'boolean',
-            'due_date' => 'date',
-        ];
-    }
+    protected $casts = [
+        'completed' => 'boolean',
+        'due_date' => 'date',
+    ];
 
     /**
      * Get the user that owns the todo.
@@ -49,7 +31,7 @@ class Todo extends Model
     /**
      * Scope a query to only include todos for a specific user.
      */
-    public function scopeForUser($query, int $userId)
+    public function scopeForUser($query, $userId)
     {
         return $query->where('user_id', $userId);
     }
@@ -71,11 +53,15 @@ class Todo extends Model
     }
 
     /**
-     * Scope a query to only include todos by priority.
+     * Scope a query to order by priority.
      */
-    public function scopeByPriority($query, string $priority)
+    public function scopeByPriority($query, $direction = 'desc')
     {
-        return $query->where('priority', $priority);
+        $order = $direction === 'desc' 
+            ? "CASE priority WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 END"
+            : "CASE priority WHEN 'low' THEN 1 WHEN 'medium' THEN 2 WHEN 'high' THEN 3 END";
+        
+        return $query->orderByRaw($order);
     }
 
     /**
@@ -84,6 +70,6 @@ class Todo extends Model
     public function scopeOverdue($query)
     {
         return $query->where('due_date', '<', now())
-                    ->where('completed', false);
+                     ->where('completed', false);
     }
 }

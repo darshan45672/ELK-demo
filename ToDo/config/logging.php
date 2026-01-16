@@ -132,7 +132,7 @@ return [
             'driver' => 'monolog',
             'level' => env('LOG_LEVEL', 'debug'),
             'handler' => StreamHandler::class,
-            'formatter' => JsonFormatter::class,
+            'formatter' => \App\Logging\CustomJsonFormatter::class,
             'handler_with' => [
                 'stream' => storage_path('logs/elk.log'),
             ],

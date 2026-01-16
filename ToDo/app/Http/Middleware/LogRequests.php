@@ -20,7 +20,7 @@ class LogRequests
         $requestId = (string) Str::uuid();
         $startTime = microtime(true);
 
-        // Share context across all log channels for this request
+        // Share context for all logs in this request
         Log::shareContext([
             'request_id' => $requestId,
             'user_id' => $request->user()?->id,
@@ -28,13 +28,12 @@ class LogRequests
             'ip_address' => $request->ip(),
             'user_agent' => $request->userAgent(),
             'session_id' => $request->session()->getId(),
+        ]);
+
+        Log::info('Incoming request', [
             'method' => $request->method(),
             'url' => $request->fullUrl(),
             'route' => $request->route()?->getName(),
-        ]);
-
-        // Log incoming request
-        Log::info('Incoming request', [
             'path' => $request->path(),
             'query_params' => $request->query(),
             'has_file' => $request->hasFile('*'),
@@ -42,17 +41,15 @@ class LogRequests
 
         $response = $next($request);
 
-        // Calculate response time
-        $responseTime = round((microtime(true) - $startTime) * 1000, 2); // in milliseconds
+        $duration = (microtime(true) - $startTime) * 1000; // Convert to milliseconds
 
-        // Log response
         Log::info('Request completed', [
+            'method' => $request->method(),
+            'url' => $request->fullUrl(),
+            'route' => $request->route()?->getName(),
             'status_code' => $response->getStatusCode(),
-            'response_time_ms' => $responseTime,
+            'response_time_ms' => round($duration, 2),
         ]);
-
-        // Add request ID to response headers
-        $response->headers->set('X-Request-Id', $requestId);
 
         return $response;
     }

@@ -27,6 +27,23 @@ filebeat.inputs:
     app_name: application-logger
   fields_under_root: true
 
+# Todo application logs
+- type: filestream
+  enabled: true
+  id: todo-logs
+  paths:
+    - /var/log/todo/*.log
+  parsers:
+    - ndjson:
+        target: ""
+        overwrite_keys: true
+        add_error_key: true
+        expand_keys: false
+  fields:
+    log_source: todo-app
+    app_name: todo-application
+  fields_under_root: true
+
 # Kafka output
 output.kafka:
   hosts: ["kafka:9092"]
