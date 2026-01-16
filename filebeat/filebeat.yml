@@ -44,6 +44,23 @@ filebeat.inputs:
     app_name: todo-application
   fields_under_root: true
 
+# Next.js application logs
+- type: filestream
+  enabled: true
+  id: js-logs
+  paths:
+    - /var/log/js/*.log
+  parsers:
+    - ndjson:
+        target: ""
+        overwrite_keys: true
+        add_error_key: true
+        expand_keys: false
+  fields:
+    log_source: nextjs-app
+    app_name: nextjs-todo
+  fields_under_root: true
+
 # Kafka output
 output.kafka:
   hosts: ["kafka:9092"]

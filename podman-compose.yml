@@ -33,20 +33,39 @@ services:
   #   networks:
   #     - elk-network
 
-  todo-app:
-    build: ./Todo
-    container_name: todo-app
+  mongodb:
+    image: mongo:7
+    container_name: mongodb
     ports:
-      - "8000:8000"
+      - "27017:27017"
     volumes:
-      - ./Todo:/var/www/html
-      - todo-logs:/var/www/html/storage/logs
-    working_dir: /var/www/html
-    command: php artisan serve --host=0.0.0.0 --port=8000
+      - mongodb-data:/data/db
+    networks:
+      - elk-network
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  js-todo-app:
+    build: ./js-app
+    container_name: js-todo-app
+    ports:
+      - "3000:3000"
+    volumes:
+      - js-logs:/app/logs
+    environment:
+      - MONGODB_URI=mongodb://mongodb:27017/nextjs-todo
+      - LOG_LEVEL=info
+      - NODE_ENV=production
     networks:
       - elk-network
     depends_on:
-      - elasticsearch
+      mongodb:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
 
   zookeeper:
     image: wurstmeister/zookeeper:latest
@@ -144,13 +163,18 @@ services:
       - app-logs:/var/log/app:ro
       - laravel-logs:/var/log/laravel:ro
       - todo-logs:/var/log/todo:ro
+      - js-logs:/var/log/js:ro
     command: filebeat -e --strict.perms=false
     depends_on:
       kafka:
         condition: service_healthy
     networks:
+      - elk-network
+
 volumes:
   elasticsearch-data:
+    driver: local
+  mongodb-data:
     driver: local
   filebeat-data:
     driver: local
@@ -160,6 +184,7 @@ volumes:
     driver: local
   todo-logs:
     driver: local
+  js-logs:
     driver: local
 
 networks:
