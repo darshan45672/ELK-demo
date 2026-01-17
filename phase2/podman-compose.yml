@@ -40,6 +40,8 @@ services:
       - "8080:8080"
     depends_on:
       - elasticsearch
+    networks:
+      - elk-network
 
   filebeat:
     image: docker.elastic.co/beats/filebeat:8.19.0
