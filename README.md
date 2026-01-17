@@ -1,8 +1,21 @@
 # ELK Demo - Elasticsearch Log Storage
 
-A simple setup with Elasticsearch and a synthetic log generator using Podman.
+A comprehensive ELK stack demonstration with multiple phases showing different logging architectures.
 
-## Components
+## Repository Structure
+
+- **`phase1/`** - Basic Elasticsearch setup with Python log generator
+- **`Todo/`** - Laravel application with structured logging (on `js-todo-log` branch)
+- **`js-app/`** - Next.js application with MongoDB and Winston logging (on `js-todo-log` branch)
+- **Documentation** - Setup guides, Kibana visualization guides, and troubleshooting docs
+
+---
+
+## Phase 1: Basic Elasticsearch Setup
+
+Located in the `phase1/` directory.
+
+### Components
 
 1. **Elasticsearch**: Stores and indexes logs (v8.19.0)
 2. **Log Generator**: Python app that generates random synthetic logs and sends them to Elasticsearch via REST API
@@ -27,6 +40,7 @@ A simple setup with Elasticsearch and a synthetic log generator using Podman.
 ### Start the Services
 
 ```bash
+cd phase1
 podman-compose up -d
 ```
 
